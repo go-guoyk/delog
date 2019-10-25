@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
@@ -57,6 +58,18 @@ type RuleBook struct {
 	Rules []Rule `yaml:"rules"`
 }
 
+func (rb RuleBook) Validate() error {
+	if len(rb.Rules) == 0 {
+		return errors.New("no rules")
+	}
+	for i, r := range rb.Rules {
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("rule %d, %s", i+1, err.Error())
+		}
+	}
+	return nil
+}
+
 func LoadRuleBooks(dir string) ([]RuleBook, error) {
 	// file infos
 	var err error
@@ -66,7 +79,6 @@ func LoadRuleBooks(dir string) ([]RuleBook, error) {
 	}
 	var rbs []RuleBook
 	// load rule books
-outerLoop:
 	for _, fi := range fis {
 		// check file extension
 		if ext := strings.ToLower(filepath.Ext(fi.Name())); ext != ".yaml" && ext != ".yml" {
@@ -85,16 +97,12 @@ outerLoop:
 			log.Printf("failed: %s", err.Error())
 			continue
 		}
-		if len(rb.Rules) == 0 {
-			log.Println("failed: no rules")
+		// validate rule book
+		if err = rb.Validate(); err != nil {
+			log.Printf("failed: %s", err.Error())
 			continue
 		}
-		for i, r := range rb.Rules {
-			if err = r.Validate(); err != nil {
-				log.Printf("failed: rule %d invalid: %s", i, err.Error())
-				continue outerLoop
-			}
-		}
+		// save filename to rulebook
 		rb.File = fp
 		log.Printf("succeeded: %d rules loaded", len(rb.Rules))
 		// append to output
