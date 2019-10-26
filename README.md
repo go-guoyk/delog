@@ -19,7 +19,7 @@
 
     该操作会获取并编译 `logdel` 到 `$GOPATH/bin/logdel`
 
-    也可以从 [此处](https://github.com/go-guoyk/logdel/releases) 获取预编译好的二进制文件
+    **也可以从 [此处](https://github.com/go-guoyk/logdel/releases) 获取预编译好的二进制文件**
 
 2. 复制 `logdel` 到 `/usr/bin/logdel`
 
@@ -36,9 +36,9 @@
     /home/logs/error*.log: 5
     ```
 
-4. 配置 cron
+4. 配置 `cron`
 
-   建议使用 cron 作为启动方式，执行 `crontab -e` 并填写如下内容
+   建议使用 `cron` 作为启动方式，执行 `crontab -e` 并填写如下内容
 
    ```crontab
    # 每日 02:00 执行一次 logdel
