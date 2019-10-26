@@ -42,7 +42,7 @@
 
    ```crontab
    # 每日 02:00 执行一次 logdel
-   * 2 * * * /usr/bin/logdel
+   0 2 * * * /usr/bin/logdel
    ```
 
 ## Credits
