@@ -1,112 +1,93 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"gopkg.in/yaml.v2"
+	"bufio"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
-	"time"
 )
 
-type Rule struct {
-	Files []string `yaml:"files"`
-	Keep  int      `yaml:"keep"`
-}
+type ruleIterator func(line int, pattern string, keep int)
 
-func (r Rule) Validate() error {
-	if len(r.Files) == 0 {
-		return errors.New("missing 'files' field")
-	}
-	if r.Keep <= 0 {
-		return errors.New("missing 'keep' field")
-	}
-	return nil
-}
-
-func (r Rule) Glob() (out []string, err error) {
-	mOut := map[string]bool{}
-	var matches []string
-	for _, item := range r.Files {
-		if matches, err = filepath.Glob(item); err != nil {
-			return
+func ruleIterate(r io.Reader, it ruleIterator) error {
+	i := 0
+	s := bufio.NewScanner(r)
+	s.Split(bufio.ScanLines)
+	for s.Scan() {
+		i++
+		line := strings.TrimSpace(s.Text())
+		// skip empty
+		if len(line) == 0 {
+			continue
 		}
-		for _, m := range matches {
-			mOut[m] = true
+		// skip comment
+		if strings.HasPrefix(line, "#") {
+			continue
 		}
-	}
-	for k := range mOut {
-		out = append(out, k)
-	}
-	return
-}
-
-func (r Rule) Check(filename string, now time.Time) (expired bool, ok bool) {
-	var date time.Time
-	if date, ok = extractDateFromFilename(filename); !ok {
-		return
-	}
-	expired = int(now.Sub(date)/time.Hour*24) > r.Keep
-	return
-}
-
-type RuleBook struct {
-	File  string `yaml:"-"`
-	Rules []Rule `yaml:"rules"`
-}
-
-func (rb RuleBook) Validate() error {
-	if len(rb.Rules) == 0 {
-		return errors.New("no rules")
-	}
-	for i, r := range rb.Rules {
-		if err := r.Validate(); err != nil {
-			return fmt.Errorf("rule %d, %s", i+1, err.Error())
+		// remove tailing comment
+		split := strings.SplitN(line, "#", 2)
+		if len(split) > 1 {
+			line = split[0]
 		}
+		// extract 'pattern' and 'keep'
+		split = strings.SplitN(line, ":", 2)
+		if len(split) != 2 {
+			log.Printf("- line %d: syntax invalid", i)
+			continue
+		}
+		var err error
+		var keep int
+		if keep, err = strconv.Atoi(strings.TrimSpace(split[1])); err != nil {
+			log.Printf("- line %d: 'keep' value invalid", i)
+			continue
+		}
+		pattern := strings.TrimSpace(split[0])
+		// invoke it
+		log.Printf("- line %d: %s (keep %d days)", i, pattern, keep)
+		it(i, pattern, keep)
 	}
-	return nil
+	return s.Err()
 }
 
-func LoadRuleBooks(dir string) ([]RuleBook, error) {
-	// file infos
+func ruleIterateFile(filename string, it ruleIterator) error {
+	var err error
+	var f *os.File
+	if f, err = os.Open(filename); err != nil {
+		return err
+	}
+	defer f.Close()
+	return ruleIterate(f, it)
+}
+
+type ruleDirIterator func(rulefile string, line int, pattern string, keep int)
+
+func ruleIterateDir(dir string, it ruleDirIterator) error {
 	var err error
 	var fis []os.FileInfo
 	if fis, err = ioutil.ReadDir(dir); err != nil {
-		return nil, err
+		return err
 	}
-	var rbs []RuleBook
-	// load rule books
+	sort.SliceStable(fis, func(i, j int) bool {
+		return fis[i].Name() < fis[j].Name()
+	})
 	for _, fi := range fis {
-		// check file extension
-		if ext := strings.ToLower(filepath.Ext(fi.Name())); ext != ".yaml" && ext != ".yml" {
+		// skip dot files
+		if strings.HasPrefix(fi.Name(), ".") {
 			continue
 		}
-		// load rulebook
-		fp := filepath.Join(dir, fi.Name())
-		log.Printf("loading: %s", fp)
-		var buf []byte
-		if buf, err = ioutil.ReadFile(fp); err != nil {
-			log.Printf("failed: %s", err.Error())
+		rf := filepath.Join(dir, fi.Name())
+		log.Printf("rule: %s", rf)
+		if err = ruleIterateFile(rf, func(line int, pattern string, keep int) {
+			it(rf, line, pattern, keep)
+		}); err != nil {
+			log.Printf("- failed to load: %s", err.Error())
 			continue
 		}
-		var rb RuleBook
-		if err = yaml.Unmarshal(buf, &rb); err != nil {
-			log.Printf("failed: %s", err.Error())
-			continue
-		}
-		// validate rule book
-		if err = rb.Validate(); err != nil {
-			log.Printf("failed: %s", err.Error())
-			continue
-		}
-		// save filename to rulebook
-		rb.File = fp
-		log.Printf("succeeded: %d rules loaded", len(rb.Rules))
-		// append to output
-		rbs = append(rbs, rb)
 	}
-	return rbs, nil
+	return nil
 }

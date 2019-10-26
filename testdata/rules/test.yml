@@ -1,3 +1,0 @@
-rules:
-  - files: ['testdata/logs/**/*.log']
-    keep: 1

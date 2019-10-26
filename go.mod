@@ -1,4 +1,4 @@
-module go.guoyk.net/delog
+module go.guoyk.net/logdel
 
 go 1.13
 

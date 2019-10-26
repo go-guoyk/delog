@@ -1,0 +1,4 @@
+  # this is for test
+
+
+  testdata/logs/*.log : 4 # this is for test
